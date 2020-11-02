@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,7 @@ func uploadFile(w http.ResponseWriter, r *http.Request) {
 	file, handler, err := r.FormFile("myFile")
 	id := r.Form.Get("id")
 	fmt.Println(id)
+	fmt.Println(formatRequest(r))
 	if err != nil {
 		fmt.Println("Error Retrieving the File")
 		fmt.Println(err)
@@ -51,4 +53,30 @@ func setupRoutes() {
 func main() {
 	fmt.Println("Hello World")
 	setupRoutes()
+}
+
+func formatRequest(r *http.Request) string {
+	// Create return string
+	var request []string
+	// Add the request string
+	url := fmt.Sprintf("%v %v %v", r.Method, r.URL, r.Proto)
+	request = append(request, url)
+	// Add the host
+	request = append(request, fmt.Sprintf("Host: %v", r.Host))
+	// Loop through headers
+	for name, headers := range r.Header {
+		name = strings.ToLower(name)
+		for _, h := range headers {
+			request = append(request, fmt.Sprintf("%v: %v", name, h))
+		}
+	}
+
+	// If this is a POST, add post data
+	if r.Method == "POST" {
+		r.ParseForm()
+		request = append(request, "\n")
+		request = append(request, r.Form.Encode())
+	}
+	// Return the request as a string
+	return strings.Join(request, "\n")
 }
