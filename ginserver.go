@@ -22,9 +22,12 @@ func main() {
 }
 
 func upload(c *gin.Context) {
+
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
+
 		c.String(http.StatusBadRequest, fmt.Sprintf("file err : %s", err.Error()))
+		fmt.Print(err)
 		return
 	}
 	filename := header.Filename
