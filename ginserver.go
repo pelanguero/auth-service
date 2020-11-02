@@ -107,6 +107,7 @@ func handleCreateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
 		return
 	}
+	//"no es coneccion es conexion"
 	id, err := Create(&userr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": err})

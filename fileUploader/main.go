@@ -10,7 +10,7 @@ import (
 
 func uploadFile(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("File Upload Endpoint Hit")
-
+	//"no es coneccion es conexion"
 	r.ParseMultipartForm(20 << 20)
 
 	file, handler, err := r.FormFile("myFile")
