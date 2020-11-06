@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Usuario struct {
@@ -21,6 +22,26 @@ type Usuario struct {
 	Correo string
 	Foto   string
 	Clave  string
+}
+type Libro struct {
+	ID      primitive.ObjectID
+	usuario primitive.ObjectID
+	archivo string
+}
+type Seccion struct {
+	ID       primitive.ObjectID
+	libro    primitive.ObjectID
+	usuario  primitive.ObjectID
+	paginaIn int
+	paginaFi int
+}
+type Pagina struct {
+	ID      primitive.ObjectID
+	usuario primitive.ObjectID //correo
+	libro   primitive.ObjectID
+	seccion primitive.ObjectID
+	texto   string
+	pagina  int
 }
 
 func main() {
@@ -88,7 +109,6 @@ func Create(user *Usuario) (primitive.ObjectID, error) {
 	defer cancel()
 	defer client.Disconnect(ctx)
 	user.ID = primitive.NewObjectID()
-
 	result, err := client.Database("slice-pdf").Collection("test1").InsertOne(ctx, user)
 	if err != nil {
 		log.Printf("Could not create Task: %v", err)
@@ -107,6 +127,7 @@ func handleCreateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
 		return
 	}
+	userr.Clave = hashpw(userr.Clave)
 	//"no es coneccion es conexion"
 	id, err := Create(&userr)
 	if err != nil {
@@ -124,4 +145,13 @@ func handleGetUsers(c *gin.Context) {
 
 	tasks = append(tasks, task)
 	c.JSON(http.StatusOK, gin.H{"tasks": tasks})
+}
+
+func hashpw(pwd string) string {
+	bytestr := []byte(pwd)
+	hashh, err := bcrypt.GenerateFromPassword(bytestr, bcrypt.MinCost)
+	if err != nil {
+		log.Println(err)
+	}
+	return string(hashh)
 }
