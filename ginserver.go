@@ -53,7 +53,7 @@ func main() {
 	router.POST("/upload", upload)
 	router.StaticFS("/file", http.Dir("public"))
 	router.GET("/usuarios/", handleGetUsers)
-	router.PUT("/usuarios/", handleCreateUser)
+	router.PUT("/registro/", handleCreateUser)
 	router.Run(":8080")
 }
 
@@ -154,4 +154,13 @@ func hashpw(pwd string) string {
 		log.Println(err)
 	}
 	return string(hashh)
+}
+
+func verificarpw(hashedpw string, plain string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hashedpw), []byte(plain))
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	return true
 }
