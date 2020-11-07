@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -104,18 +105,33 @@ func mongoConnection() (*mongo.Client, context.Context, context.CancelFunc) {
 	return client, ctx, cancel
 }
 
-func Create(user *Usuario) (primitive.ObjectID, error) {
+func Create(user *Usuario) (primitive.ObjectID, error, bool) {
+	var oid primitive.ObjectID
+	var existe bool
 	client, ctx, cancel := mongoConnection()
+	filtro := bson.M{"correo": user.Correo}
+	var testt Usuario
 	defer cancel()
 	defer client.Disconnect(ctx)
 	user.ID = primitive.NewObjectID()
-	result, err := client.Database("slice-pdf").Collection("test1").InsertOne(ctx, user)
-	if err != nil {
-		log.Printf("Could not create Task: %v", err)
-		return primitive.NilObjectID, err
+	errorr := client.Database("slice-pdf").Collection("usuarios").FindOne(context.TODO(), filtro).Decode(&testt)
+	if errorr != nil {
+		log.Println(errorr)
 	}
-	oid := result.InsertedID.(primitive.ObjectID)
-	return oid, nil
+	if testt.Correo != user.Correo {
+		result, err := client.Database("slice-pdf").Collection("usuarios").InsertOne(ctx, user)
+		if err != nil {
+			log.Printf("No se pudo agregar el usuario: %v", err)
+			return primitive.NilObjectID, err, false
+		}
+		oid = result.InsertedID.(primitive.ObjectID)
+		existe = false
+	} else {
+		log.Println("El Usuario ya existe")
+		existe = true
+	}
+
+	return oid, nil, existe
 }
 
 func handleCreateUser(c *gin.Context) {
@@ -129,12 +145,17 @@ func handleCreateUser(c *gin.Context) {
 	}
 	userr.Clave = hashpw(userr.Clave)
 	//"no es coneccion es conexion"
-	id, err := Create(&userr)
+	id, err, insertod := Create(&userr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": err})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id})
+	if insertod {
+		c.JSON(http.StatusOK, gin.H{"error": "El Usuario ya existe"})
+	} else {
+		c.JSON(http.StatusOK, gin.H{"id": id})
+	}
+
 }
 
 func handleGetUsers(c *gin.Context) {
