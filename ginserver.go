@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -16,6 +17,16 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type Claims struct {
+	Correo string `json:"correo"`
+	jwt.StandardClaims
+}
+
+type Credenciales struct {
+	Clave  string
+	Correo string
+}
 
 type Usuario struct {
 	ID     primitive.ObjectID
@@ -55,7 +66,48 @@ func main() {
 	router.StaticFS("/file", http.Dir("public"))
 	router.GET("/usuarios/", handleGetUsers)
 	router.PUT("/registro/", handleCreateUser)
+	router.PUT("/iniciosesion", iniciosesion)
 	router.Run(":8080")
+}
+
+func iniciosesion(c *gin.Context) {
+	jwtkey := []byte("clave secreta xd")
+	var creds Credenciales
+	var testt Usuario
+	err := c.ShouldBindJSON(&creds)
+	if err != nil {
+		log.Print(err)
+		log.Print(creds.Correo)
+		c.JSON(http.StatusLocked, gin.H{"msg": err})
+		return
+	}
+	filtro := bson.M{"correo": creds.Correo}
+	client, ctx, cancel := mongoConnection()
+	defer cancel()
+	defer client.Disconnect(ctx)
+
+	errorr := client.Database("slice-pdf").Collection("usuarios").FindOne(context.TODO(), filtro).Decode(&testt)
+	if errorr != nil {
+		log.Println(errorr)
+	}
+	if testt.Correo == creds.Correo && verificarpw(testt.Clave, creds.Clave) {
+		expirationTime := time.Now().Add(24 * time.Hour)
+		claims := &Claims{
+			Correo: creds.Correo,
+			StandardClaims: jwt.StandardClaims{
+				ExpiresAt: expirationTime.Unix(),
+			},
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		tokenString, errr := token.SignedString(jwtkey)
+		if errr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"msg": errr})
+		}
+		c.JSON(http.StatusAccepted, gin.H{"Name": "token", "Value": tokenString, "Expira": expirationTime})
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Credenciales no validas"})
+	}
+
 }
 
 func upload(c *gin.Context) {
@@ -158,6 +210,7 @@ func handleCreateUser(c *gin.Context) {
 
 }
 
+//funcion temporal
 func handleGetUsers(c *gin.Context) {
 	var tasks []Usuario
 	var task Usuario
@@ -168,6 +221,7 @@ func handleGetUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tasks": tasks})
 }
 
+//es para no guardar el pw plano
 func hashpw(pwd string) string {
 	bytestr := []byte(pwd)
 	hashh, err := bcrypt.GenerateFromPassword(bytestr, bcrypt.MinCost)
@@ -177,6 +231,7 @@ func hashpw(pwd string) string {
 	return string(hashh)
 }
 
+//verifica el pw con hash y el posible pw plano
 func verificarpw(hashedpw string, plain string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hashedpw), []byte(plain))
 	if err != nil {
