@@ -56,6 +56,8 @@ type Pagina struct {
 	pagina  int
 }
 
+var jwtkey = []byte("clave secreta xd")
+
 func main() {
 	router := gin.Default()
 	router.LoadHTMLGlob("template/*")
@@ -71,7 +73,7 @@ func main() {
 }
 
 func iniciosesion(c *gin.Context) {
-	jwtkey := []byte("clave secreta xd")
+
 	var creds Credenciales
 	var testt Usuario
 	err := c.ShouldBindJSON(&creds)
@@ -239,4 +241,23 @@ func verificarpw(hashedpw string, plain string) bool {
 		return false
 	}
 	return true
+}
+
+//verifica el token (jwt) returna 0 si el token esta bien, 1 si la firma es invalida, 2 si el token no es valido y -1 si no se hizo la peticion de manera correcta
+func verificarjwt(jjwt string, clai *Claims) int {
+	tkn, errorr := jwt.ParseWithClaims(jjwt, clai, func(token *jwt.Token) (interface{}, error) {
+		return jwtkey, nil
+	})
+
+	if errorr != nil {
+		if errorr == jwt.ErrSignatureInvalid {
+			return 1
+		}
+		return -1
+	}
+	if !tkn.Valid {
+		return 2
+	}
+
+	return 0
 }
