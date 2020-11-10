@@ -131,7 +131,7 @@ func upload(c *gin.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	filepath := "http://localhost:8080/file/" + filename
+	filepath := "http://localhost:8080/public/" + filename
 	c.JSON(http.StatusOK, gin.H{"filepath": filepath})
 }
 
