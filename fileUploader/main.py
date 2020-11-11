@@ -13,12 +13,10 @@ while x<=int(sys.argv[2])+int(sys.argv[3]):
     pageObj=pdfReader.getPage(x)
     str=pageObj.extractText()
     payload=[iduser=sys.argv[4],idbook=sys.argv[5],text=str]
-    r=requests.put(endpoint,data=json.dumps(payload))
+    r=requests.put(endpoint, data = json.dumps(payload))
     print(r.status_code)
 
 
-#marc=open("marcadores.txt","w")
-#print(marcadores)
 
 
 

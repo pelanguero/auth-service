@@ -37,23 +37,24 @@ type Usuario struct {
 }
 type Libro struct {
 	ID      primitive.ObjectID
-	usuario primitive.ObjectID
-	archivo string
+	Usuario string
+	Archivo string
 }
 type Seccion struct {
 	ID       primitive.ObjectID
-	libro    primitive.ObjectID
-	usuario  primitive.ObjectID
-	paginaIn int
-	paginaFi int
+	Libro    primitive.ObjectID
+	Usuario  primitive.ObjectID
+	PaginaIn int
+	PaginaFi int
+	Paginas  []primitive.ObjectID
 }
 type Pagina struct {
 	ID      primitive.ObjectID
-	usuario primitive.ObjectID //correo
-	libro   primitive.ObjectID
-	seccion primitive.ObjectID
-	texto   string
-	pagina  int
+	Usuario primitive.ObjectID //correo
+	Libro   primitive.ObjectID
+	Seccion primitive.ObjectID
+	Texto   string
+	Pagina  int
 }
 
 var jwtkey = []byte("clave secreta xd")
@@ -112,27 +113,42 @@ func iniciosesion(c *gin.Context) {
 
 }
 
+//procesa multipart/form-data para la subida de archivos con un campo adicional en el header "token"
 func upload(c *gin.Context) {
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	if 0 == statuss {
+		file, header, err := c.Request.FormFile("file")
+		if err != nil {
 
-	file, header, err := c.Request.FormFile("file")
-	if err != nil {
-
-		c.String(http.StatusBadRequest, fmt.Sprintf("file err : %s", err.Error()))
-		fmt.Print(err)
+			c.String(http.StatusBadRequest, fmt.Sprintf("file err : %s", err.Error()))
+			fmt.Print(err)
+			return
+		}
+		filename := header.Filename
+		out, err := os.Create("public/" + filename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer out.Close()
+		_, err = io.Copy(out, file)
+		if err != nil {
+			log.Fatal(err)
+		}
+		filepath := "http://localhost:8080/public/" + filename
+		agregarlibro(filename, claim.Correo)
+		c.JSON(http.StatusOK, gin.H{"Libro": "exito", "ruta": filepath})
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado para subir archivos"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado para subir archivos, token no valido"})
 		return
 	}
-	filename := header.Filename
-	out, err := os.Create("public/" + filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer out.Close()
-	_, err = io.Copy(out, file)
-	if err != nil {
-		log.Fatal(err)
-	}
-	filepath := "http://localhost:8080/public/" + filename
-	c.JSON(http.StatusOK, gin.H{"filepath": filepath})
+
 }
 
 func mongoConnection() (*mongo.Client, context.Context, context.CancelFunc) {
@@ -260,4 +276,25 @@ func verificarjwt(jjwt string, clai *Claims) int {
 	}
 
 	return 0
+}
+
+//agrega un libro con el usuario y la ruta dadas
+func agregarlibro(rutaArchivo string, usuarioo string) (bool, primitive.ObjectID) {
+	var oid primitive.ObjectID
+	client, ctx, cancel := mongoConnection()
+	var testt Libro
+	fmt.Println(rutaArchivo)
+	fmt.Println(usuarioo)
+	testt.Archivo = rutaArchivo
+	testt.Usuario = usuarioo
+	testt.ID = primitive.NewObjectID()
+	defer cancel()
+	defer client.Disconnect(ctx)
+	result, err := client.Database("slice-pdf").Collection("libros").InsertOne(ctx, testt)
+	if err != nil {
+		log.Printf("No se pudo agregar el Libro: %v", err)
+		return false, oid
+	}
+	oid = result.InsertedID.(primitive.ObjectID)
+	return true, oid
 }
