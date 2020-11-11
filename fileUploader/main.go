@@ -1,12 +1,23 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+type Seccion struct {
+	ID       primitive.ObjectID
+	libro    primitive.ObjectID
+	usuario  primitive.ObjectID
+	paginaIn int
+	paginaFi int
+}
 
 func uploadFile(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("File Upload Endpoint Hit")
@@ -47,6 +58,7 @@ func uploadFile(w http.ResponseWriter, r *http.Request) {
 
 func setupRoutes() {
 	http.HandleFunc("/upload", uploadFile)
+	http.HandleFunc("/crearseccion", crearSeccion)
 	http.ListenAndServe(":8888", nil)
 }
 
@@ -54,7 +66,10 @@ func main() {
 	fmt.Println("Corriendo Server")
 	setupRoutes()
 }
-
+func crearSeccion(w http.ResponseWriter, r *http.Request) {
+	var seccion Seccion
+	json.Unmarshal([]byte(r.Body), &seccion)
+}
 func formatRequest(r *http.Request) string {
 	// Create return string
 	var request []string
