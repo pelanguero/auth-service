@@ -66,6 +66,11 @@ func main() {
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
 	})
+	router.POST("/upload", upload)
+	router.StaticFS("/file", http.Dir("public"))
+	router.GET("/usuarios/", handleGetUsers)
+	router.PUT("/registro/", handleCreateUser)
+	router.PUT("/iniciosesion", iniciosesion)
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"PUT", "PATCH"},
@@ -74,11 +79,6 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
-	router.POST("/upload", upload)
-	router.StaticFS("/file", http.Dir("public"))
-	router.GET("/usuarios/", handleGetUsers)
-	router.PUT("/registro/", handleCreateUser)
-	router.PUT("/iniciosesion", iniciosesion)
 	router.Run(":8080")
 }
 
