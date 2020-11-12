@@ -72,10 +72,13 @@ func main() {
 	router.PUT("/registro/", handleCreateUser)
 	router.PUT("/iniciosesion", iniciosesion)
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"PUT", "PATCH"},
-		AllowHeaders:     []string{"Origin"},
-		ExposeHeaders:    []string{"Content-Length"},
+		AllowOrigins:  []string{"*"},
+		AllowMethods:  []string{"PUT", "PATCH"},
+		AllowHeaders:  []string{"Origin"},
+		ExposeHeaders: []string{"Content-Length"},
+		AllowOriginFunc: func(origin string) bool {
+			return true
+		},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
