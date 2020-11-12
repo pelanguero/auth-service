@@ -67,7 +67,7 @@ func main() {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
 	})
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     []string{"127.0.0.1:3000/"},
 		AllowMethods:     []string{"PUT", "PATCH"},
 		AllowHeaders:     []string{"Origin"},
 		ExposeHeaders:    []string{"Content-Length"},
