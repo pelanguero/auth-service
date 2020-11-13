@@ -196,7 +196,7 @@ func mongoConnection() (*mongo.Client, context.Context, context.CancelFunc) {
 	return client, ctx, cancel
 }
 
-func Create(user *Usuario) (primitive.ObjectID, error, bool) {
+func Create(user *Usuario) (primitive.ObjectID, bool, error) {
 	var oid primitive.ObjectID
 	var existe bool
 	client, ctx, cancel := mongoConnection()
@@ -236,7 +236,7 @@ func handleCreateUser(c *gin.Context) {
 	}
 	userr.Clave = hashpw(userr.Clave)
 	//"no es coneccion es conexion"
-	id, err, insertod := Create(&userr)
+	id, insertod, err := Create(&userr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": err})
 		return
