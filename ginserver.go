@@ -120,18 +120,24 @@ func iniciosesion(c *gin.Context) {
 		}
 		c.JSON(http.StatusAccepted, gin.H{"Name": "token", "Value": tokenString, "Expira": expirationTime})
 	} else {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
-		c.Header("Access-Control-Allow-Methods", "PUT, POST, DELETE, GET")
+		corsmiddle(c)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Credenciales no validas"})
 	}
 
+}
+
+//middleware que maneja los cors
+func corsmiddle(c *gin.Context) {
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
+	c.Header("Access-Control-Allow-Methods", "PUT, POST, DELETE, GET")
 }
 
 //procesa multipart/form-data para la subida de archivos con un campo adicional en el header "token"
 func upload(c *gin.Context) {
 	claim := &Claims{}
 	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	corsmiddle(c)
 	if 0 == statuss {
 		file, header, err := c.Request.FormFile("file")
 		if err != nil {
@@ -240,7 +246,7 @@ func handleCreateUser(c *gin.Context) {
 	} else {
 		c.JSON(http.StatusOK, gin.H{"id": id})
 	}
-
+	corsmiddle(c)
 }
 
 //funcion temporal
