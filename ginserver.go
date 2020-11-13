@@ -213,7 +213,7 @@ func Create(user *Usuario) (primitive.ObjectID, bool, error) {
 		result, err := client.Database("slice-pdf").Collection("usuarios").InsertOne(ctx, user)
 		if err != nil {
 			log.Printf("No se pudo agregar el usuario: %v", err)
-			return primitive.NilObjectID, err, false
+			return primitive.NilObjectID, false, err
 		}
 		oid = result.InsertedID.(primitive.ObjectID)
 		existe = false
@@ -222,7 +222,7 @@ func Create(user *Usuario) (primitive.ObjectID, bool, error) {
 		existe = true
 	}
 
-	return oid, nil, existe
+	return oid, existe, nil
 }
 
 func handleCreateUser(c *gin.Context) {
