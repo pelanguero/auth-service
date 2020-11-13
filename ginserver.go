@@ -62,6 +62,17 @@ var jwtkey = []byte("clave secreta xd")
 
 func main() {
 	router := gin.Default()
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"PUT", "PATCH"},
+		AllowHeaders:     []string{"Origin", "X-Requested-With", "Content-Type", "Accept"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		AllowOriginFunc: func(origin string) bool {
+			return true
+		},
+		MaxAge: 12 * time.Hour,
+	}))
 	router.LoadHTMLGlob("template/*")
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
@@ -71,17 +82,6 @@ func main() {
 	router.GET("/usuarios/", handleGetUsers)
 	router.PUT("/registro/", handleCreateUser)
 	router.PUT("/iniciosesion", iniciosesion)
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:  []string{"*"},
-		AllowMethods:  []string{"PUT", "PATCH"},
-		AllowHeaders:  []string{"Origin"},
-		ExposeHeaders: []string{"Content-Length"},
-		AllowOriginFunc: func(origin string) bool {
-			return true
-		},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
 	router.Run(":8080")
 }
 
@@ -120,7 +120,9 @@ func iniciosesion(c *gin.Context) {
 		}
 		c.JSON(http.StatusAccepted, gin.H{"Name": "token", "Value": tokenString, "Expira": expirationTime})
 	} else {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Credenciales no validas"})
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Credenciales no validas"})
 	}
 
 }
