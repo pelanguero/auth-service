@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -40,6 +43,7 @@ type Libro struct {
 	ID      primitive.ObjectID
 	Usuario string
 	Archivo string
+	Imagen  string
 }
 type Seccion struct {
 	ID       primitive.ObjectID
@@ -78,6 +82,7 @@ func main() {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
 	})
 	router.POST("/upload", upload)
+	router.Static("/images", "./public/images")
 	router.StaticFS("/file", http.Dir("public"))
 	router.GET("/usuarios/", handleGetUsers)
 	router.GET("/inicio", paginicio)
@@ -197,7 +202,8 @@ func upload(c *gin.Context) {
 			fmt.Print(err)
 			return
 		}
-		filename := header.Filename
+
+		filename := strings.ReplaceAll(header.Filename, " ", "")
 		out, err := os.Create("public/" + filename)
 		if err != nil {
 			log.Fatal(err)
@@ -208,7 +214,8 @@ func upload(c *gin.Context) {
 			log.Fatal(err)
 		}
 		filepath := "http://localhost:8080/public/" + filename
-		agregarlibro(filename, claim.Correo)
+		creartumb("./public/"+filename, filename)
+		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png")
 		c.JSON(http.StatusOK, gin.H{"Libro": "exito", "ruta": filepath})
 	} else if statuss == 1 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado para subir archivos"})
@@ -351,7 +358,7 @@ func verificarjwt(jjwt string, clai *Claims) int {
 }
 
 //agrega un libro con el usuario y la ruta dadas
-func agregarlibro(rutaArchivo string, usuarioo string) (bool, primitive.ObjectID) {
+func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, primitive.ObjectID) {
 	var oid primitive.ObjectID
 	client, ctx, cancel := mongoConnection()
 	var testt Libro
@@ -359,6 +366,7 @@ func agregarlibro(rutaArchivo string, usuarioo string) (bool, primitive.ObjectID
 	fmt.Println(usuarioo)
 	testt.Archivo = rutaArchivo
 	testt.Usuario = usuarioo
+	testt.Imagen = imagenn
 	testt.ID = primitive.NewObjectID()
 	defer cancel()
 	defer client.Disconnect(ctx)
@@ -369,4 +377,18 @@ func agregarlibro(rutaArchivo string, usuarioo string) (bool, primitive.ObjectID
 	}
 	oid = result.InsertedID.(primitive.ObjectID)
 	return true, oid
+}
+
+//crea la miniatura del libro a partir de la primera pagina
+func creartumb(ruta_pdf string, nombre_pdf string) {
+	cmd := exec.Command("python", "tumb.py", ruta_pdf, "./public/images/", nombre_pdf)
+	var out bytes.Buffer
+	fmt.Println("intento crear la miniatura")
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("in all caps: %q\n", out.String())
+
 }
