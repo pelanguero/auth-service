@@ -80,11 +80,61 @@ func main() {
 	router.POST("/upload", upload)
 	router.StaticFS("/file", http.Dir("public"))
 	router.GET("/usuarios/", handleGetUsers)
+	router.GET("/inicio", paginicio)
 	router.PUT("/registro/", handleCreateUser)
 	router.PUT("/iniciosesion", iniciosesion)
 	router.Run(":8080")
 }
 
+//retorna los libros asociados al usuario
+func paginicio(c *gin.Context) {
+
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+
+	corsmiddle(c)
+	if 0 == statuss {
+		filtro := bson.M{"usuario": claim.Correo}
+		findOps := options.Find()
+		findOps.SetLimit(10)
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		var consulta []*Libro
+		con, err := client.Database("slice-pdf").Collection("libros").Find(context.TODO(), filtro, findOps)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for con.Next(context.TODO()) {
+			var s Libro
+			err := con.Decode(&s)
+			if err != nil {
+				log.Fatal(err)
+			}
+			consulta = append(consulta, &s)
+		}
+
+		if err := con.Err(); err != nil {
+			log.Fatal(err)
+		}
+
+		con.Close(context.TODO())
+		c.JSON(http.StatusOK, gin.H{"libros": consulta})
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
+	}
+
+}
+
+//recibe las credenciales las comprueba y retorna el token si es correcta
 func iniciosesion(c *gin.Context) {
 
 	var creds Credenciales
@@ -120,9 +170,10 @@ func iniciosesion(c *gin.Context) {
 		}
 		c.JSON(http.StatusAccepted, gin.H{"Name": "token", "Value": tokenString, "Expira": expirationTime})
 	} else {
-		corsmiddle(c)
+
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Credenciales no validas"})
 	}
+	corsmiddle(c)
 
 }
 
