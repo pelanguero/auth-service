@@ -12,9 +12,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -216,7 +221,10 @@ func upload(c *gin.Context) {
 		filepath := "http://localhost:8080/public/" + filename
 		creartumb("./public/"+filename, filename)
 		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png")
-		c.JSON(http.StatusOK, gin.H{"Libro": "exito", "ruta": filepath})
+		//pendiente agregar variable o variable de entorno para las rutas de archivos locales
+		subiraBucket("general-developing-brutality", "./public/"+filename)
+		subiraBucket("general-developing-brutality", "./public/images/"+filename+".png")
+		c.JSON(http.StatusOK, gin.H{"Libro": filename, "ruta": filepath})
 	} else if statuss == 1 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado para subir archivos"})
 		return
@@ -231,11 +239,16 @@ func upload(c *gin.Context) {
 }
 
 func mongoConnection() (*mongo.Client, context.Context, context.CancelFunc) {
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Error al cargar .env")
+	}
+
 	connectTimeout := 5
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(connectTimeout)*time.Second)
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb+srv://pelanguero:halo12345@cluster0.rjmu9.gcp.mongodb.net/slice-pdf?retryWrites=true&w=majority"))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(os.Getenv("MONGO_CONNECTION")))
 	if err != nil {
 		log.Printf("Fallo al crear el cliente: %v", err)
 	}
@@ -391,4 +404,50 @@ func creartumb(ruta_pdf string, nombre_pdf string) {
 	}
 	fmt.Printf("in all caps: %q\n", out.String())
 
+}
+
+//muestra los errores del sdk de aws
+func exitErrorf(msg string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, msg+"\n", args...)
+	os.Exit(1)
+}
+
+//subir a bucket "general-developing-brutality"
+func subiraBucket(buckett string, file string) {
+	verb := true
+	archivo, err := os.Open(file)
+	if err != nil {
+		exitErrorf("Incapaz de abrir el archivo %q, %v", err)
+	}
+	defer archivo.Close()
+
+	creds := credentials.NewStaticCredentials(os.Getenv("AWS_ID"), "AWS_SECRET", "")
+	// Retrieve the credentials value
+	credValue, err := creds.Get()
+	if err != nil {
+		if credValue.AccessKeyID == "" {
+
+		}
+		fmt.Println(err)
+	}
+
+	session := session.Must(session.NewSession(&aws.Config{
+		Region:                        aws.String("us-east-1"),
+		CredentialsChainVerboseErrors: &verb,
+		Credentials:                   creds,
+	}))
+
+	uploader := s3manager.NewUploader(session)
+
+	_, err = uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(buckett),
+		Key:    aws.String(file),
+		Body:   archivo,
+	})
+
+	if err != nil {
+		exitErrorf("Incapaz de subir el archivo %q to %q, %v", file, buckett, err)
+	}
+
+	fmt.Printf("Archivo subido  %q to %q\n", file, buckett)
 }
