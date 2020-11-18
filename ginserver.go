@@ -70,6 +70,11 @@ type Pagina struct {
 var jwtkey = []byte("clave secreta xd")
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Error al cargar .env")
+	}
+	jwtkey = []byte(os.Getenv("JWT_KEY"))
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
@@ -421,7 +426,7 @@ func subiraBucket(buckett string, file string) {
 	}
 	defer archivo.Close()
 
-	creds := credentials.NewStaticCredentials(os.Getenv("AWS_ID"), "AWS_SECRET", "")
+	creds := credentials.NewStaticCredentials(os.Getenv("AWS_ID"), os.Getenv("AWS_SECRET"), "")
 	// Retrieve the credentials value
 	credValue, err := creds.Get()
 	if err != nil {
@@ -450,4 +455,8 @@ func subiraBucket(buckett string, file string) {
 	}
 
 	fmt.Printf("Archivo subido  %q to %q\n", file, buckett)
+}
+
+func descargaMulti() {
+
 }
