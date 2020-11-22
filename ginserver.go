@@ -66,6 +66,17 @@ type Pagina struct {
 	Texto   string
 	Pagina  int
 }
+type CheatSheet struct {
+	ID      primitive.ObjectID
+	Usuario string
+	Titulo  string
+}
+type Cheat struct {
+	ID         primitive.ObjectID
+	Titulo     string
+	Cheatsheet primitive.ObjectID
+	Contenido  string
+}
 
 var jwtkey = []byte("clave secreta xd")
 
@@ -92,13 +103,187 @@ func main() {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
 	})
 	router.POST("/upload", upload)
+	router.POST("/addCheatSheet", crearCheatSheet)
+	router.POST("/addCheat", crearCheat)
 	router.Static("/images", "./public/images")
 	router.StaticFS("/file", http.Dir("public"))
 	router.GET("/usuarios/", handleGetUsers)
 	router.GET("/inicio", paginicio)
+	router.GET("/cheatsheets", consultaCheatSheets)
+	router.GET("/cheats", consultaCheats)
 	router.PUT("/registro/", handleCreateUser)
 	router.PUT("/iniciosesion", iniciosesion)
 	router.Run(":8080")
+}
+func consultaCheats(c *gin.Context) {
+	var chsh CheatSheet
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	erorr := c.ShouldBindJSON(&chsh)
+	if erorr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+		return
+	} else {
+		corsmiddle(c)
+		if 0 == statuss {
+			filtro := bson.M{"CheatSheet": chsh.ID}
+			findOps := options.Find()
+			//findOps.SetLimit(10)
+			client, ctx, cancel := mongoConnection()
+			defer cancel()
+			defer client.Disconnect(ctx)
+			var consulta []*CheatSheet
+			con, err := client.Database("slice-pdf").Collection("cheats").Find(context.TODO(), filtro, findOps)
+			if err != nil {
+				log.Fatal(err)
+			}
+			for con.Next(context.TODO()) {
+				var s CheatSheet
+				err := con.Decode(&s)
+				if err != nil {
+					log.Fatal(err)
+				}
+				consulta = append(consulta, &s)
+			}
+
+			if err := con.Err(); err != nil {
+				log.Fatal(err)
+			}
+
+			con.Close(context.TODO())
+			c.JSON(http.StatusOK, gin.H{"CheatSheets": consulta})
+
+		} else if statuss == 1 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+			return
+		} else if statuss == -1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+			return
+		} else if statuss == 2 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+			return
+		}
+	}
+
+}
+
+func consultaCheatSheets(c *gin.Context) {
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+
+	corsmiddle(c)
+	if 0 == statuss {
+		filtro := bson.M{"usuario": claim.Correo}
+		findOps := options.Find()
+		//findOps.SetLimit(10)
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		var consulta []*CheatSheet
+		con, err := client.Database("slice-pdf").Collection("cheatsheets").Find(context.TODO(), filtro, findOps)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for con.Next(context.TODO()) {
+			var s CheatSheet
+			err := con.Decode(&s)
+			if err != nil {
+				log.Fatal(err)
+			}
+			consulta = append(consulta, &s)
+		}
+
+		if err := con.Err(); err != nil {
+			log.Fatal(err)
+		}
+
+		con.Close(context.TODO())
+		c.JSON(http.StatusOK, gin.H{"CheatSheets": consulta})
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
+	}
+}
+
+//crea una cheatsheet en la base de datos
+func crearCheatSheet(c *gin.Context) {
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	corsmiddle(c)
+	if 0 == statuss {
+		//filtro := bson.M{"usuario": claim.Correo}
+		//findOps := options.Find()
+		//findOps.SetLimit(10)
+		var chsh CheatSheet
+		erorr := c.ShouldBindJSON(&chsh)
+		if erorr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+			return
+		}
+		chsh.ID = primitive.NewObjectID()
+		chsh.Usuario = claim.Correo
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		con, err := client.Database("slice-pdf").Collection("cheatsheets").InsertOne(ctx, chsh)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Fallo al crear la cheatsheet"})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"CheatSheet": chsh.ID, "resultado": con})
+		}
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
+	}
+}
+
+//crea un cheat
+func crearCheat(c *gin.Context) {
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	corsmiddle(c)
+	if 0 == statuss {
+		var cheat Cheat
+		erorr := c.ShouldBindJSON(&cheat)
+		if erorr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+			return
+		}
+		cheat.ID = primitive.NewObjectID()
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		con, err := client.Database("slice-pdf").Collection("cheats").InsertOne(ctx, cheat)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Fallo al crear el cheat"})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"CheatSheet": cheat.ID, "resultado": con})
+		}
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
+	}
 }
 
 //retorna los libros asociados al usuario
