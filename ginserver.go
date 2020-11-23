@@ -291,8 +291,6 @@ func paginicio(c *gin.Context) {
 
 	claim := &Claims{}
 	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
-
-	corsmiddle(c)
 	if 0 == statuss {
 		filtro := bson.M{"usuario": claim.Correo}
 		findOps := options.Find()
@@ -331,6 +329,7 @@ func paginicio(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
 		return
 	}
+	corsmiddle(c)
 
 }
 
