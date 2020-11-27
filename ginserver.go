@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
@@ -87,7 +88,6 @@ func main() {
 	jwtkey = []byte(os.Getenv("JWT_KEY"))
 	router := gin.Default()
 	//
-	router.Use(corsmiddle())
 	router.LoadHTMLGlob("template/*")
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
@@ -101,8 +101,19 @@ func main() {
 	router.GET("/inicio", paginicio)
 	router.GET("/cheatsheets", consultaCheatSheets)
 	router.GET("/cheats", consultaCheats)
-	router.PUT("/registro/", handleCreateUser)
-	router.PUT("/iniciosesion", iniciosesion)
+	router.PUT("/registro/", corsmiddle(), handleCreateUser)
+	router.PUT("/iniciosesion", corsmiddle(), iniciosesion)
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"PUT", "PATCH", "GET", "POST"},
+		AllowHeaders:     []string{"Origin"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		AllowOriginFunc: func(origin string) bool {
+			return origin == "*"
+		},
+		MaxAge: 12 * time.Hour,
+	}))
 	router.Run(":8080")
 }
 func consultaCheats(c *gin.Context) {
