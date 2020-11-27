@@ -17,7 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
@@ -87,17 +86,8 @@ func main() {
 	}
 	jwtkey = []byte(os.Getenv("JWT_KEY"))
 	router := gin.Default()
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"PUT", "PATCH"},
-		AllowHeaders:     []string{"Origin", "X-Requested-With", "Content-Type", "Accept"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		AllowOriginFunc: func(origin string) bool {
-			return true
-		},
-		MaxAge: 12 * time.Hour,
-	}))
+	//
+	router.Use(corsmiddle())
 	router.LoadHTMLGlob("template/*")
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
@@ -124,7 +114,7 @@ func consultaCheats(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
 		return
 	} else {
-		corsmiddle(c)
+
 		if 0 == statuss {
 			filtro := bson.M{"CheatSheet": chsh.ID}
 			findOps := options.Find()
@@ -171,7 +161,6 @@ func consultaCheatSheets(c *gin.Context) {
 	claim := &Claims{}
 	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
 
-	corsmiddle(c)
 	if 0 == statuss {
 		filtro := bson.M{"usuario": claim.Correo}
 		findOps := options.Find()
@@ -216,7 +205,6 @@ func consultaCheatSheets(c *gin.Context) {
 func crearCheatSheet(c *gin.Context) {
 	claim := &Claims{}
 	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
-	corsmiddle(c)
 	if 0 == statuss {
 		//filtro := bson.M{"usuario": claim.Correo}
 		//findOps := options.Find()
@@ -255,7 +243,7 @@ func crearCheatSheet(c *gin.Context) {
 func crearCheat(c *gin.Context) {
 	claim := &Claims{}
 	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
-	corsmiddle(c)
+
 	if 0 == statuss {
 		var cheat Cheat
 		erorr := c.ShouldBindJSON(&cheat)
@@ -329,7 +317,6 @@ func paginicio(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
 		return
 	}
-	corsmiddle(c)
 
 }
 
@@ -372,22 +359,24 @@ func iniciosesion(c *gin.Context) {
 
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Credenciales no validas"})
 	}
-	corsmiddle(c)
 
 }
 
 //middleware que maneja los cors
-func corsmiddle(c *gin.Context) {
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
-	c.Header("Access-Control-Allow-Methods", "PUT, POST, DELETE, GET")
+func corsmiddle() gin.HandlerFunc {
+
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
+		c.Header("Access-Control-Allow-Methods", "PUT, POST, DELETE, GET")
+	}
+
 }
 
 //procesa multipart/form-data para la subida de archivos con un campo adicional en el header "token"
 func upload(c *gin.Context) {
 	claim := &Claims{}
 	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
-	corsmiddle(c)
 	if 0 == statuss {
 		file, header, err := c.Request.FormFile("file")
 		if err != nil {
@@ -506,7 +495,7 @@ func handleCreateUser(c *gin.Context) {
 	} else {
 		c.JSON(http.StatusOK, gin.H{"id": id})
 	}
-	corsmiddle(c)
+
 }
 
 //funcion temporal
