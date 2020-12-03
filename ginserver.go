@@ -17,7 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
@@ -88,6 +87,7 @@ func main() {
 	jwtkey = []byte(os.Getenv("JWT_KEY"))
 	router := gin.Default()
 	//
+	router.Use(CORSMiddleware())
 	router.LoadHTMLGlob("template/*")
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
@@ -101,20 +101,34 @@ func main() {
 	router.GET("/inicio", paginicio)
 	router.GET("/cheatsheets", consultaCheatSheets)
 	router.GET("/cheats", consultaCheats)
-	router.PUT("/registro/", corsmiddle(), handleCreateUser)
-	router.PUT("/iniciosesion", corsmiddle(), iniciosesion)
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"PUT", "PATCH", "GET", "POST"},
-		AllowHeaders:     []string{"Origin", "token"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		AllowOriginFunc: func(origin string) bool {
-			return origin == "*"
-		},
-		MaxAge: 12 * time.Hour,
-	}))
+	router.PUT("/registro/", handleCreateUser)
+	router.PUT("/iniciosesion", iniciosesion)
+	router.OPTIONS("/iniciosesion", opciones)
+	router.OPTIONS("/inicio", opciones)
+	//router.Use(cors.Default())
+
 	router.Run(":8080")
+}
+func opciones(c *gin.Context) {
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Headers", "access-control-allow-origin, access-control-allow-headers,access-control-allow-origin")
+	c.JSON(http.StatusOK, gin.H{"opciones": "des"})
+}
+
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control,token, X-Requested-With,access-control-allow-origin")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
 }
 func consultaCheats(c *gin.Context) {
 	var chsh CheatSheet
@@ -373,17 +387,6 @@ func iniciosesion(c *gin.Context) {
 
 }
 
-//middleware que maneja los cors
-func corsmiddle() gin.HandlerFunc {
-
-	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
-		c.Header("Access-Control-Allow-Methods", "PUT, POST, DELETE, GET")
-	}
-
-}
-
 //procesa multipart/form-data para la subida de archivos con un campo adicional en el header "token"
 func upload(c *gin.Context) {
 	claim := &Claims{}
@@ -550,6 +553,8 @@ func verificarjwt(jjwt string, clai *Claims) int {
 		if errorr == jwt.ErrSignatureInvalid {
 			return 1
 		}
+		fmt.Println(errorr.Error())
+		fmt.Println(jjwt)
 		return -1
 	}
 	if !tkn.Valid {
