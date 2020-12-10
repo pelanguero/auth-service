@@ -97,6 +97,7 @@ func main() {
 	router.POST("/addCheat", crearCheat)
 	router.Static("/images", "./public/images")
 	router.StaticFS("/file", http.Dir("public"))
+	router.OPTIONS("/file", opciones)
 	router.GET("/usuarios/", handleGetUsers)
 	router.GET("/inicio", paginicio)
 	router.GET("/cheatsheets", consultaCheatSheets)
