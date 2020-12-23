@@ -106,6 +106,7 @@ func main() {
 	router.PUT("/iniciosesion", iniciosesion)
 	router.OPTIONS("/iniciosesion", opciones)
 	router.OPTIONS("/inicio", opciones)
+	router.OPTIONS("/upload", opciones)
 	//router.Use(cors.Default())
 
 	router.Run(":8080")
@@ -393,11 +394,11 @@ func upload(c *gin.Context) {
 	claim := &Claims{}
 	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
 	if 0 == statuss {
-		file, header, err := c.Request.FormFile("file")
+		file, header, err := c.Request.FormFile("myFile")
 		if err != nil {
 
 			c.String(http.StatusBadRequest, fmt.Sprintf("file err : %s", err.Error()))
-			fmt.Print(err)
+			fmt.Println(err)
 			return
 		}
 
@@ -416,7 +417,7 @@ func upload(c *gin.Context) {
 		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png")
 		//pendiente agregar variable o variable de entorno para las rutas de archivos locales
 		subiraBucket("general-developing-brutality", "./public/"+filename)
-		subiraBucket("general-developing-brutality", "./public/images/"+filename+".png")
+		subiraBucket("general-developing-brutality", "./public/"+filename+".png")
 		c.JSON(http.StatusOK, gin.H{"Libro": filename, "ruta": filepath})
 	} else if statuss == 1 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado para subir archivos"})
@@ -555,7 +556,7 @@ func verificarjwt(jjwt string, clai *Claims) int {
 			return 1
 		}
 		fmt.Println(errorr.Error())
-		fmt.Println(jjwt)
+		fmt.Println("Este es el token" + jjwt)
 		return -1
 	}
 	if !tkn.Valid {
@@ -589,7 +590,7 @@ func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, pr
 
 //crea la miniatura del libro a partir de la primera pagina
 func creartumb(ruta_pdf string, nombre_pdf string) {
-	cmd := exec.Command("python", "tumb.py", ruta_pdf, "./public/images/", nombre_pdf)
+	cmd := exec.Command("python", "tumb.py", ruta_pdf, "./public/", nombre_pdf)
 	var out bytes.Buffer
 	fmt.Println("intento crear la miniatura")
 	cmd.Stdout = &out
