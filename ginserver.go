@@ -108,7 +108,6 @@ func main() {
 	router.OPTIONS("/addCheatSheet", opciones)
 	router.OPTIONS("/addCheat", opciones)
 	router.OPTIONS("/cheatsheets", opciones)
-	router.OPTIONS("/addCheat", opciones)
 	router.OPTIONS("/inicio", opciones)
 	router.OPTIONS("/upload", opciones)
 	//router.Use(cors.Default())
