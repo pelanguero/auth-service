@@ -251,6 +251,7 @@ func crearCheatSheet(c *gin.Context) {
 		defer cancel()
 		defer client.Disconnect(ctx)
 		con, err := client.Database("slice-pdf").Collection("cheatsheets").InsertOne(ctx, chsh)
+		c.JSON(http.StatusOK, gin.H{"ID": chsh.ID})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Fallo al crear la cheatsheet"})
 		} else {
