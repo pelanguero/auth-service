@@ -318,17 +318,18 @@ func paginicio(c *gin.Context) {
 		defer cancel()
 		defer client.Disconnect(ctx)
 		var consulta []*Libro
+		var s Libro
 		con, err := client.Database("slice-pdf").Collection("libros").Find(context.TODO(), filtro, findOps)
 		if err != nil {
 			log.Fatal(err)
 		}
 		for con.Next(context.TODO()) {
-			var s Libro
-			err := con.Decode(&s)
+			var ss Libro
+			err := con.Decode(&ss)
 			if err != nil {
 				log.Fatal(err)
 			}
-			consulta = append(consulta, &s)
+			consulta = append(consulta, &ss)
 		}
 
 		if err := con.Err(); err != nil {
@@ -336,6 +337,14 @@ func paginicio(c *gin.Context) {
 		}
 
 		con.Close(context.TODO())
+
+		if len(consulta) == 0 {
+			s.ID = primitive.NewObjectID()
+			s.Archivo = "sicp.pdf"
+			s.Imagen = "Plus_symbol.png"
+			consulta = append(consulta, &s)
+		}
+		fmt.Println(consulta)
 		c.JSON(http.StatusOK, gin.H{"libros": consulta})
 
 	} else if statuss == 1 {
