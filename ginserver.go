@@ -95,11 +95,8 @@ func main() {
 	router.POST("/upload", upload)
 	router.POST("/addCheatSheet", crearCheatSheet)
 	router.POST("/addCheat", crearCheat)
-	router.Static("/images", "./public/")
-	router.StaticFS("/file", http.Dir("public"))
-	router.OPTIONS("/file", opciones)
+
 	router.GET("/usuarios/", handleGetUsers)
-	router.GET("/inicio", paginicio)
 	router.GET("/cheatsheets", consultaCheatSheets)
 	router.GET("/addCheat", consultaCheats)
 	router.PUT("/registro/", handleCreateUser)
@@ -110,9 +107,30 @@ func main() {
 	router.OPTIONS("/cheatsheets", opciones)
 	router.OPTIONS("/inicio", opciones)
 	router.OPTIONS("/upload", opciones)
+	router.Use(auth())
+	router.GET("/inicio", paginicio)
+	router.Static("/images", "./public/")
+	router.StaticFS("/file", http.Dir("public"))
+	router.OPTIONS("/file", opciones)
 	//router.Use(cors.Default())
-
 	router.Run(":8080")
+}
+func auth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claim := &Claims{}
+		//verifica el token (jwt) returna 0 si el token esta bien, 1 si la firma es invalida, 2 si el token no es valido y -1 si no se hizo la peticion de manera correcta
+		valor := verificarjwt(c.Request.Header.Get("token"), claim)
+		if valor == 0 {
+
+		} else if valor == 1 {
+			c.AbortWithStatus(401)
+		} else if valor == 2 {
+			c.AbortWithStatus(401)
+		} else if valor == -1 {
+			c.AbortWithStatus(400)
+		}
+		c.Next()
+	}
 }
 func opciones(c *gin.Context) {
 	c.Header("Access-Control-Allow-Origin", "*")
@@ -135,6 +153,7 @@ func CORSMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
 func consultaCheats(c *gin.Context) {
 	var chsh CheatSheet
 	claim := &Claims{}
@@ -146,19 +165,19 @@ func consultaCheats(c *gin.Context) {
 	} else {
 
 		if 0 == statuss {
-			filtro := bson.M{"CheatSheet": chsh.ID}
+			filtro := bson.M{"cheatsheet": chsh.ID}
 			findOps := options.Find()
 			//findOps.SetLimit(10)
 			client, ctx, cancel := mongoConnection()
 			defer cancel()
 			defer client.Disconnect(ctx)
-			var consulta []*CheatSheet
+			var consulta []*Cheat
 			con, err := client.Database("slice-pdf").Collection("cheats").Find(context.TODO(), filtro, findOps)
 			if err != nil {
 				log.Fatal(err)
 			}
 			for con.Next(context.TODO()) {
-				var s CheatSheet
+				var s Cheat
 				err := con.Decode(&s)
 				if err != nil {
 					log.Fatal(err)
@@ -309,54 +328,41 @@ func crearCheat(c *gin.Context) {
 func paginicio(c *gin.Context) {
 
 	claim := &Claims{}
-	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
-	if 0 == statuss {
-		filtro := bson.M{"usuario": claim.Correo}
-		findOps := options.Find()
-		findOps.SetLimit(10)
-		client, ctx, cancel := mongoConnection()
-		defer cancel()
-		defer client.Disconnect(ctx)
-		var consulta []*Libro
-		var s Libro
-		con, err := client.Database("slice-pdf").Collection("libros").Find(context.TODO(), filtro, findOps)
+	verificarjwt(c.Request.Header.Get("token"), claim)
+	filtro := bson.M{"usuario": claim.Correo}
+	findOps := options.Find()
+	findOps.SetLimit(10)
+	client, ctx, cancel := mongoConnection()
+	defer cancel()
+	defer client.Disconnect(ctx)
+	var consulta []*Libro
+	var s Libro
+	con, err := client.Database("slice-pdf").Collection("libros").Find(context.TODO(), filtro, findOps)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for con.Next(context.TODO()) {
+		var ss Libro
+		err := con.Decode(&ss)
 		if err != nil {
 			log.Fatal(err)
 		}
-		for con.Next(context.TODO()) {
-			var ss Libro
-			err := con.Decode(&ss)
-			if err != nil {
-				log.Fatal(err)
-			}
-			consulta = append(consulta, &ss)
-		}
-
-		if err := con.Err(); err != nil {
-			log.Fatal(err)
-		}
-
-		con.Close(context.TODO())
-
-		if len(consulta) == 0 {
-			s.ID = primitive.NewObjectID()
-			s.Archivo = "sicp.pdf"
-			s.Imagen = "Plus_symbol.png"
-			consulta = append(consulta, &s)
-		}
-		fmt.Println(consulta)
-		c.JSON(http.StatusOK, gin.H{"libros": consulta})
-
-	} else if statuss == 1 {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
-		return
-	} else if statuss == -1 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
-		return
-	} else if statuss == 2 {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
-		return
+		consulta = append(consulta, &ss)
 	}
+
+	if err := con.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	con.Close(context.TODO())
+
+	if len(consulta) == 0 {
+		s.ID = primitive.NewObjectID()
+		s.Archivo = "sicp.pdf"
+		s.Imagen = "Plus_symbol.png"
+		consulta = append(consulta, &s)
+	}
+	c.JSON(http.StatusOK, gin.H{"libros": consulta})
 
 }
 
