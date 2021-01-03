@@ -1,17 +1,24 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -40,6 +47,7 @@ type Libro struct {
 	ID      primitive.ObjectID
 	Usuario string
 	Archivo string
+	Imagen  string
 }
 type Seccion struct {
 	ID       primitive.ObjectID
@@ -57,34 +65,302 @@ type Pagina struct {
 	Texto   string
 	Pagina  int
 }
+type CheatSheet struct {
+	ID      primitive.ObjectID
+	Usuario string
+	Titulo  string
+}
+type Cheat struct {
+	ID         primitive.ObjectID
+	Titulo     string
+	Cheatsheet primitive.ObjectID
+	Contenido  string
+}
 
 var jwtkey = []byte("clave secreta xd")
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Error al cargar .env")
+	}
+	jwtkey = []byte(os.Getenv("JWT_KEY"))
 	router := gin.Default()
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"PUT", "PATCH"},
-		AllowHeaders:     []string{"Origin", "X-Requested-With", "Content-Type", "Accept"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		AllowOriginFunc: func(origin string) bool {
-			return true
-		},
-		MaxAge: 12 * time.Hour,
-	}))
+	//
+	router.Use(CORSMiddleware())
 	router.LoadHTMLGlob("template/*")
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "select_file.html", gin.H{})
 	})
 	router.POST("/upload", upload)
+	router.POST("/addCheatSheet", crearCheatSheet)
+	router.POST("/addCheat", crearCheat)
+	router.Static("/images", "./public/")
 	router.StaticFS("/file", http.Dir("public"))
+	router.OPTIONS("/file", opciones)
 	router.GET("/usuarios/", handleGetUsers)
+	router.GET("/inicio", paginicio)
+	router.GET("/cheatsheets", consultaCheatSheets)
+	router.GET("/addCheat", consultaCheats)
 	router.PUT("/registro/", handleCreateUser)
 	router.PUT("/iniciosesion", iniciosesion)
+	router.OPTIONS("/iniciosesion", opciones)
+	router.OPTIONS("/addCheatSheet", opciones)
+	router.OPTIONS("/addCheat", opciones)
+	router.OPTIONS("/cheatsheets", opciones)
+	router.OPTIONS("/inicio", opciones)
+	router.OPTIONS("/upload", opciones)
+	//router.Use(cors.Default())
+
 	router.Run(":8080")
 }
+func opciones(c *gin.Context) {
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Headers", "access-control-allow-origin, access-control-allow-headers,access-control-allow-origin")
+	c.JSON(http.StatusOK, gin.H{"opciones": "des"})
+}
 
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control,token, X-Requested-With,access-control-allow-origin")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
+}
+func consultaCheats(c *gin.Context) {
+	var chsh CheatSheet
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	erorr := c.ShouldBindJSON(&chsh)
+	if erorr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+		return
+	} else {
+
+		if 0 == statuss {
+			filtro := bson.M{"CheatSheet": chsh.ID}
+			findOps := options.Find()
+			//findOps.SetLimit(10)
+			client, ctx, cancel := mongoConnection()
+			defer cancel()
+			defer client.Disconnect(ctx)
+			var consulta []*CheatSheet
+			con, err := client.Database("slice-pdf").Collection("cheats").Find(context.TODO(), filtro, findOps)
+			if err != nil {
+				log.Fatal(err)
+			}
+			for con.Next(context.TODO()) {
+				var s CheatSheet
+				err := con.Decode(&s)
+				if err != nil {
+					log.Fatal(err)
+				}
+				consulta = append(consulta, &s)
+			}
+
+			if err := con.Err(); err != nil {
+				log.Fatal(err)
+			}
+
+			con.Close(context.TODO())
+			c.JSON(http.StatusOK, gin.H{"CheatSheets": consulta})
+
+		} else if statuss == 1 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+			return
+		} else if statuss == -1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+			return
+		} else if statuss == 2 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+			return
+		}
+	}
+
+}
+
+func consultaCheatSheets(c *gin.Context) {
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+
+	if 0 == statuss {
+		filtro := bson.M{"usuario": claim.Correo}
+		findOps := options.Find()
+		//findOps.SetLimit(10)
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		var consulta []*CheatSheet
+		con, err := client.Database("slice-pdf").Collection("cheatsheets").Find(context.TODO(), filtro, findOps)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for con.Next(context.TODO()) {
+			var s CheatSheet
+			err := con.Decode(&s)
+			if err != nil {
+				log.Fatal(err)
+			}
+			consulta = append(consulta, &s)
+		}
+
+		if err := con.Err(); err != nil {
+			log.Fatal(err)
+		}
+
+		con.Close(context.TODO())
+		c.JSON(http.StatusOK, gin.H{"CheatSheets": consulta})
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
+	}
+}
+
+//crea una cheatsheet en la base de datos
+func crearCheatSheet(c *gin.Context) {
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	if 0 == statuss {
+		//filtro := bson.M{"usuario": claim.Correo}
+		//findOps := options.Find()
+		//findOps.SetLimit(10)
+		var chsh CheatSheet
+		erorr := c.ShouldBindJSON(&chsh)
+		if erorr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+			return
+		}
+		chsh.ID = primitive.NewObjectID()
+		chsh.Usuario = claim.Correo
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		con, err := client.Database("slice-pdf").Collection("cheatsheets").InsertOne(ctx, chsh)
+		c.JSON(http.StatusOK, gin.H{"ID": chsh.ID})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Fallo al crear la cheatsheet"})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"CheatSheet": chsh.ID, "resultado": con})
+		}
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
+	}
+}
+
+//crea un cheat
+func crearCheat(c *gin.Context) {
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+
+	if 0 == statuss {
+		var cheat Cheat
+		erorr := c.ShouldBindJSON(&cheat)
+		if erorr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+			return
+		}
+		cheat.ID = primitive.NewObjectID()
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		con, err := client.Database("slice-pdf").Collection("cheats").InsertOne(ctx, cheat)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Fallo al crear el cheat"})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"CheatSheet": cheat.ID, "resultado": con})
+		}
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
+	}
+}
+
+//retorna los libros asociados al usuario
+func paginicio(c *gin.Context) {
+
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	if 0 == statuss {
+		filtro := bson.M{"usuario": claim.Correo}
+		findOps := options.Find()
+		findOps.SetLimit(10)
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		var consulta []*Libro
+		var s Libro
+		con, err := client.Database("slice-pdf").Collection("libros").Find(context.TODO(), filtro, findOps)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for con.Next(context.TODO()) {
+			var ss Libro
+			err := con.Decode(&ss)
+			if err != nil {
+				log.Fatal(err)
+			}
+			consulta = append(consulta, &ss)
+		}
+
+		if err := con.Err(); err != nil {
+			log.Fatal(err)
+		}
+
+		con.Close(context.TODO())
+
+		if len(consulta) == 0 {
+			s.ID = primitive.NewObjectID()
+			s.Archivo = "sicp.pdf"
+			s.Imagen = "Plus_symbol.png"
+			consulta = append(consulta, &s)
+		}
+		fmt.Println(consulta)
+		c.JSON(http.StatusOK, gin.H{"libros": consulta})
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
+	}
+
+}
+
+//recibe las credenciales las comprueba y retorna el token si es correcta
 func iniciosesion(c *gin.Context) {
 
 	var creds Credenciales
@@ -120,33 +396,26 @@ func iniciosesion(c *gin.Context) {
 		}
 		c.JSON(http.StatusAccepted, gin.H{"Name": "token", "Value": tokenString, "Expira": expirationTime})
 	} else {
-		corsmiddle(c)
+
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Credenciales no validas"})
 	}
 
-}
-
-//middleware que maneja los cors
-func corsmiddle(c *gin.Context) {
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
-	c.Header("Access-Control-Allow-Methods", "PUT, POST, DELETE, GET")
 }
 
 //procesa multipart/form-data para la subida de archivos con un campo adicional en el header "token"
 func upload(c *gin.Context) {
 	claim := &Claims{}
 	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
-	corsmiddle(c)
 	if 0 == statuss {
-		file, header, err := c.Request.FormFile("file")
+		file, header, err := c.Request.FormFile("myFile")
 		if err != nil {
 
 			c.String(http.StatusBadRequest, fmt.Sprintf("file err : %s", err.Error()))
-			fmt.Print(err)
+			fmt.Println(err)
 			return
 		}
-		filename := header.Filename
+
+		filename := strings.ReplaceAll(header.Filename, " ", "")
 		out, err := os.Create("public/" + filename)
 		if err != nil {
 			log.Fatal(err)
@@ -157,8 +426,12 @@ func upload(c *gin.Context) {
 			log.Fatal(err)
 		}
 		filepath := "http://localhost:8080/public/" + filename
-		agregarlibro(filename, claim.Correo)
-		c.JSON(http.StatusOK, gin.H{"Libro": "exito", "ruta": filepath})
+		creartumb("./public/"+filename, filename)
+		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png")
+		//pendiente agregar variable o variable de entorno para las rutas de archivos locales
+		subiraBucket("general-developing-brutality", "./public/"+filename)
+		subiraBucket("general-developing-brutality", "./public/"+filename+".png")
+		c.JSON(http.StatusOK, gin.H{"Libro": filename, "ruta": filepath})
 	} else if statuss == 1 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado para subir archivos"})
 		return
@@ -173,11 +446,16 @@ func upload(c *gin.Context) {
 }
 
 func mongoConnection() (*mongo.Client, context.Context, context.CancelFunc) {
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Error al cargar .env")
+	}
+
 	connectTimeout := 5
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(connectTimeout)*time.Second)
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb+srv://pelanguero:halo12345@cluster0.rjmu9.gcp.mongodb.net/slice-pdf?retryWrites=true&w=majority"))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(os.Getenv("MONGO_CONNECTION")))
 	if err != nil {
 		log.Printf("Fallo al crear el cliente: %v", err)
 	}
@@ -246,7 +524,7 @@ func handleCreateUser(c *gin.Context) {
 	} else {
 		c.JSON(http.StatusOK, gin.H{"id": id})
 	}
-	corsmiddle(c)
+
 }
 
 //funcion temporal
@@ -290,6 +568,8 @@ func verificarjwt(jjwt string, clai *Claims) int {
 		if errorr == jwt.ErrSignatureInvalid {
 			return 1
 		}
+		fmt.Println(errorr.Error())
+		fmt.Println("Este es el token" + jjwt)
 		return -1
 	}
 	if !tkn.Valid {
@@ -300,7 +580,7 @@ func verificarjwt(jjwt string, clai *Claims) int {
 }
 
 //agrega un libro con el usuario y la ruta dadas
-func agregarlibro(rutaArchivo string, usuarioo string) (bool, primitive.ObjectID) {
+func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, primitive.ObjectID) {
 	var oid primitive.ObjectID
 	client, ctx, cancel := mongoConnection()
 	var testt Libro
@@ -308,6 +588,7 @@ func agregarlibro(rutaArchivo string, usuarioo string) (bool, primitive.ObjectID
 	fmt.Println(usuarioo)
 	testt.Archivo = rutaArchivo
 	testt.Usuario = usuarioo
+	testt.Imagen = imagenn
 	testt.ID = primitive.NewObjectID()
 	defer cancel()
 	defer client.Disconnect(ctx)
@@ -318,4 +599,68 @@ func agregarlibro(rutaArchivo string, usuarioo string) (bool, primitive.ObjectID
 	}
 	oid = result.InsertedID.(primitive.ObjectID)
 	return true, oid
+}
+
+//crea la miniatura del libro a partir de la primera pagina
+func creartumb(ruta_pdf string, nombre_pdf string) {
+	cmd := exec.Command("python", "tumb.py", ruta_pdf, "./public/", nombre_pdf)
+	var out bytes.Buffer
+	fmt.Println("intento crear la miniatura")
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("in all caps: %q\n", out.String())
+
+}
+
+//muestra los errores del sdk de aws
+func exitErrorf(msg string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, msg+"\n", args...)
+	os.Exit(1)
+}
+
+//subir a bucket "general-developing-brutality"
+func subiraBucket(buckett string, file string) {
+	verb := true
+	archivo, err := os.Open(file)
+	if err != nil {
+		exitErrorf("Incapaz de abrir el archivo %q, %v", err)
+	}
+	defer archivo.Close()
+
+	creds := credentials.NewStaticCredentials(os.Getenv("AWS_ID"), os.Getenv("AWS_SECRET"), "")
+	// Retrieve the credentials value
+	credValue, err := creds.Get()
+	if err != nil {
+		if credValue.AccessKeyID == "" {
+
+		}
+		fmt.Println(err)
+	}
+
+	session := session.Must(session.NewSession(&aws.Config{
+		Region:                        aws.String("us-east-1"),
+		CredentialsChainVerboseErrors: &verb,
+		Credentials:                   creds,
+	}))
+
+	uploader := s3manager.NewUploader(session)
+
+	_, err = uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(buckett),
+		Key:    aws.String(file),
+		Body:   archivo,
+	})
+
+	if err != nil {
+		exitErrorf("Incapaz de subir el archivo %q to %q, %v", file, buckett, err)
+	}
+
+	fmt.Printf("Archivo subido  %q to %q\n", file, buckett)
+}
+
+func descargaMulti() {
+
 }
