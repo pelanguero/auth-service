@@ -1,15 +1,23 @@
 import sys
 import fitz
+from PyPDF4 import PdfFileReader
+from PyPDF4.pdf import Destination
 
-print("llego a 0")
-print(sys.argv[1])
+
+def recorrer(oobj, profundidad):
+    for pel in oobj:
+        if type(pel) is list:
+            recorrer(pel, profundidad+1)
+        elif type(pel) is Destination:
+            print(profundidad*"\t"+pel.title+"," +
+                  str(pdf.getDestinationPageNumber(pel)))
+
+
 doc = fitz.open(sys.argv[1])
-print("llego a 1")
 page = doc.loadPage(0)  # number of page
-print("llego a 2")
 pix = page.getPixmap()
-print("llego a 3")
-output =sys.argv[2]+sys.argv[3] +".png"
-print("llego a 4")
+output = sys.argv[2]+sys.argv[3] + ".png"
 pix.writePNG(output)
-print("llego a 5")
+pdf = PdfFileReader(open(sys.argv[1], "rb"))
+prr = pdf.outlines
+recorrer(prr, 0)

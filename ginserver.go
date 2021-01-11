@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,11 +44,17 @@ type Usuario struct {
 	Foto   string
 	Clave  string
 }
+type Marcador struct {
+	Titulo string
+	Pagina int
+	Hijos  []*Marcador
+}
 type Libro struct {
-	ID      primitive.ObjectID
-	Usuario string
-	Archivo string
-	Imagen  string
+	ID         primitive.ObjectID
+	Usuario    string
+	Archivo    string
+	Imagen     string
+	Marcadores []*Marcador
 }
 type Seccion struct {
 	ID       primitive.ObjectID
@@ -98,7 +105,7 @@ func main() {
 
 	router.GET("/usuarios/", handleGetUsers)
 	router.GET("/cheatsheets", consultaCheatSheets)
-	router.GET("/addCheat", consultaCheats)
+	router.PUT("/addCheat", consultaCheats)
 	router.PUT("/registro/", handleCreateUser)
 	router.PUT("/iniciosesion", iniciosesion)
 	router.OPTIONS("/iniciosesion", opciones)
@@ -432,8 +439,8 @@ func upload(c *gin.Context) {
 			log.Fatal(err)
 		}
 		filepath := "http://localhost:8080/public/" + filename
-		creartumb("./public/"+filename, filename)
-		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png")
+		desu := stringtoMarc(creartumb("./public/"+filename, filename))
+		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png", desu)
 		//pendiente agregar variable o variable de entorno para las rutas de archivos locales
 		subiraBucket("general-developing-brutality", "./public/"+filename)
 		subiraBucket("general-developing-brutality", "./public/"+filename+".png")
@@ -586,7 +593,7 @@ func verificarjwt(jjwt string, clai *Claims) int {
 }
 
 //agrega un libro con el usuario y la ruta dadas
-func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, primitive.ObjectID) {
+func agregarlibro(rutaArchivo string, usuarioo string, imagenn string, marcadores []*Marcador) (bool, primitive.ObjectID) {
 	var oid primitive.ObjectID
 	client, ctx, cancel := mongoConnection()
 	var testt Libro
@@ -595,6 +602,7 @@ func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, pr
 	testt.Archivo = rutaArchivo
 	testt.Usuario = usuarioo
 	testt.Imagen = imagenn
+	testt.Marcadores = marcadores
 	testt.ID = primitive.NewObjectID()
 	defer cancel()
 	defer client.Disconnect(ctx)
@@ -608,7 +616,7 @@ func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, pr
 }
 
 //crea la miniatura del libro a partir de la primera pagina
-func creartumb(ruta_pdf string, nombre_pdf string) {
+func creartumb(ruta_pdf string, nombre_pdf string) string {
 	cmd := exec.Command("python", "tumb.py", ruta_pdf, "./public/", nombre_pdf)
 	var out bytes.Buffer
 	fmt.Println("intento crear la miniatura")
@@ -617,8 +625,63 @@ func creartumb(ruta_pdf string, nombre_pdf string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Printf("in all caps: %q\n", out.String())
+	return out.String()
 
+}
+
+//toma el string y lo convierte en un arreglo de marcadores
+func stringtoMarc(strrg string) []*Marcador {
+	var retorno []*Marcador
+	pros := strings.Split(strrg, "\n")
+	profund := 0
+	marc(pros, 0, &retorno, profund)
+	return retorno
+}
+
+//agrega los marcadores de misma profundidad
+func marc(arrey []string, indice int, marcad *[]*Marcador, nivel int) (int, int) {
+	i := indice
+	nnds := nivel
+	for i < len(arrey) {
+		if len(arrey) == 0 {
+			break
+		} else if (len(arrey[i]) == 0 || arrey[i] == "\n") && i == 0 {
+			i++
+		} else if (arrey[i] == "" || arrey[i] == "\n") && i == len(arrey)-1 {
+			break
+		}
+		var arrmarc []*Marcador
+		marcsa := strMarc(arrey[i], arrmarc)
+		fmt.Println(arrey[i])
+		if strings.Count(arrey[i], "\t") == nivel {
+			*marcad = append(*marcad, &marcsa)
+			i++
+		} else if strings.Count(arrey[i], "\t") < nivel {
+			nnds--
+			break
+		} else if strings.Count(arrey[i], "\t") > nivel {
+			i, nnds = marc(arrey, i, &(*marcad)[len(*marcad)-1].Hijos, nivel+1)
+		}
+
+	}
+	return i, nnds
+}
+
+//construye un marcador a partir de una string
+func strMarc(strss string, hijos []*Marcador) Marcador {
+	separador := strings.LastIndex(strss, ",")
+	tem := strings.LastIndex(strss, "\t") + 1
+	temps := []rune(strss)
+	i, errur := strconv.Atoi(string(temps[separador+1 : len(strss)-1]))
+	var mar Marcador
+	if errur != nil {
+		fmt.Println(errur.Error())
+		return mar
+	}
+	mar.Titulo = string(temps[tem : separador-1])
+	mar.Pagina = i
+	mar.Hijos = hijos
+	return mar
 }
 
 //muestra los errores del sdk de aws
