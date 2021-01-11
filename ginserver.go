@@ -657,6 +657,7 @@ func marc(arrey []string, indice int, marcad *[]*Marcador, nivel int) (int, int)
 			*marcad = append(*marcad, &marcsa)
 			i++
 		} else if strings.Count(arrey[i], "\t") < nivel {
+			//posible optimizacion asignando directamente el nuevo nivel
 			nnds--
 			break
 		} else if strings.Count(arrey[i], "\t") > nivel {
@@ -678,7 +679,8 @@ func strMarc(strss string, hijos []*Marcador) Marcador {
 		fmt.Println(errur.Error())
 		return mar
 	}
-	mar.Titulo = string(temps[tem : separador-1])
+	//Quitar la coma final del titulo para que se guarde completo siempre,(alternativa separador-1) o no
+	mar.Titulo = string(temps[tem:separador])
 	mar.Pagina = i
 	mar.Hijos = hijos
 	return mar
