@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,11 +44,17 @@ type Usuario struct {
 	Foto   string
 	Clave  string
 }
+type Marcador struct {
+	Titulo string
+	Pagina int
+	Hijos  []*Marcador
+}
 type Libro struct {
-	ID      primitive.ObjectID
-	Usuario string
-	Archivo string
-	Imagen  string
+	ID         primitive.ObjectID
+	Usuario    string
+	Archivo    string
+	Imagen     string
+	Marcadores []*Marcador
 }
 type Seccion struct {
 	ID       primitive.ObjectID
@@ -95,13 +102,10 @@ func main() {
 	router.POST("/upload", upload)
 	router.POST("/addCheatSheet", crearCheatSheet)
 	router.POST("/addCheat", crearCheat)
-	router.Static("/images", "./public/")
-	router.StaticFS("/file", http.Dir("public"))
-	router.OPTIONS("/file", opciones)
+
 	router.GET("/usuarios/", handleGetUsers)
-	router.GET("/inicio", paginicio)
 	router.GET("/cheatsheets", consultaCheatSheets)
-	router.GET("/addCheat", consultaCheats)
+	router.PUT("/addCheat", consultaCheats)
 	router.PUT("/registro/", handleCreateUser)
 	router.PUT("/iniciosesion", iniciosesion)
 	router.OPTIONS("/iniciosesion", opciones)
@@ -110,9 +114,34 @@ func main() {
 	router.OPTIONS("/cheatsheets", opciones)
 	router.OPTIONS("/inicio", opciones)
 	router.OPTIONS("/upload", opciones)
+	router.OPTIONS("/borrarcheatsheet/", opciones)
+	router.OPTIONS("/borrarcheat/", opciones)
+	router.Use(auth())
+	router.GET("/inicio", paginicio)
+	router.DELETE("/borrarcheat/", borrarCheat)
+	router.DELETE("/borrarcheatsheet/", borrarCheatSheet)
+	router.Static("/images", "./public/")
+	router.StaticFS("/file", http.Dir("public"))
+	router.OPTIONS("/file", opciones)
 	//router.Use(cors.Default())
+	router.Run(os.Getenv("PUERTO"))
+}
+func auth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claim := &Claims{}
+		//verifica el token (jwt) returna 0 si el token esta bien, 1 si la firma es invalida, 2 si el token no es valido y -1 si no se hizo la peticion de manera correcta
+		valor := verificarjwt(c.Request.Header.Get("token"), claim)
+		if valor == 0 {
 
-	router.Run(":8080")
+		} else if valor == 1 {
+			c.AbortWithStatus(401)
+		} else if valor == 2 {
+			c.AbortWithStatus(401)
+		} else if valor == -1 {
+			c.AbortWithStatus(400)
+		}
+		c.Next()
+	}
 }
 func opciones(c *gin.Context) {
 	c.Header("Access-Control-Allow-Origin", "*")
@@ -135,6 +164,52 @@ func CORSMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
+func borrarCheatSheet(c *gin.Context) {
+	//falta ver que la hoja pertenesca al usuario
+	var chsh CheatSheet
+	filtro := bson.M{"id": chsh.ID}
+	erorr := c.ShouldBindJSON(&chsh)
+	findOps := options.Delete()
+	if erorr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+		return
+	} else {
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		con, err := client.Database("slice-pdf").Collection("cheatsheets").DeleteOne(context.TODO(), filtro, findOps)
+		if err != nil {
+			log.Fatal(err)
+		}
+		filtro = bson.M{"cheatsheet": chsh.ID}
+		con, err = client.Database("slice-pdf").Collection("cheats").DeleteMany(context.TODO(), filtro, findOps)
+		fmt.Println(con)
+		c.JSON(http.StatusOK, gin.H{"Se Borró": chsh})
+
+	}
+}
+func borrarCheat(c *gin.Context) {
+	var chsh Cheat
+	filtro := bson.M{"id": chsh.ID}
+	erorr := c.ShouldBindJSON(&chsh)
+	findOps := options.Delete()
+	if erorr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+		return
+	} else {
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		con, err := client.Database("slice-pdf").Collection("cheats").DeleteOne(context.TODO(), filtro, findOps)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(con)
+		c.JSON(http.StatusOK, gin.H{"Se Borró": chsh})
+
+	}
+}
+
 func consultaCheats(c *gin.Context) {
 	var chsh CheatSheet
 	claim := &Claims{}
@@ -146,19 +221,19 @@ func consultaCheats(c *gin.Context) {
 	} else {
 
 		if 0 == statuss {
-			filtro := bson.M{"CheatSheet": chsh.ID}
+			filtro := bson.M{"cheatsheet": chsh.ID}
 			findOps := options.Find()
 			//findOps.SetLimit(10)
 			client, ctx, cancel := mongoConnection()
 			defer cancel()
 			defer client.Disconnect(ctx)
-			var consulta []*CheatSheet
+			var consulta []*Cheat
 			con, err := client.Database("slice-pdf").Collection("cheats").Find(context.TODO(), filtro, findOps)
 			if err != nil {
 				log.Fatal(err)
 			}
 			for con.Next(context.TODO()) {
-				var s CheatSheet
+				var s Cheat
 				err := con.Decode(&s)
 				if err != nil {
 					log.Fatal(err)
@@ -309,54 +384,41 @@ func crearCheat(c *gin.Context) {
 func paginicio(c *gin.Context) {
 
 	claim := &Claims{}
-	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
-	if 0 == statuss {
-		filtro := bson.M{"usuario": claim.Correo}
-		findOps := options.Find()
-		findOps.SetLimit(10)
-		client, ctx, cancel := mongoConnection()
-		defer cancel()
-		defer client.Disconnect(ctx)
-		var consulta []*Libro
-		var s Libro
-		con, err := client.Database("slice-pdf").Collection("libros").Find(context.TODO(), filtro, findOps)
+	verificarjwt(c.Request.Header.Get("token"), claim)
+	filtro := bson.M{"usuario": claim.Correo}
+	findOps := options.Find()
+	findOps.SetLimit(10)
+	client, ctx, cancel := mongoConnection()
+	defer cancel()
+	defer client.Disconnect(ctx)
+	var consulta []*Libro
+	var s Libro
+	con, err := client.Database("slice-pdf").Collection("libros").Find(context.TODO(), filtro, findOps)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for con.Next(context.TODO()) {
+		var ss Libro
+		err := con.Decode(&ss)
 		if err != nil {
 			log.Fatal(err)
 		}
-		for con.Next(context.TODO()) {
-			var ss Libro
-			err := con.Decode(&ss)
-			if err != nil {
-				log.Fatal(err)
-			}
-			consulta = append(consulta, &ss)
-		}
-
-		if err := con.Err(); err != nil {
-			log.Fatal(err)
-		}
-
-		con.Close(context.TODO())
-
-		if len(consulta) == 0 {
-			s.ID = primitive.NewObjectID()
-			s.Archivo = "sicp.pdf"
-			s.Imagen = "Plus_symbol.png"
-			consulta = append(consulta, &s)
-		}
-		fmt.Println(consulta)
-		c.JSON(http.StatusOK, gin.H{"libros": consulta})
-
-	} else if statuss == 1 {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
-		return
-	} else if statuss == -1 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
-		return
-	} else if statuss == 2 {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
-		return
+		consulta = append(consulta, &ss)
 	}
+
+	if err := con.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	con.Close(context.TODO())
+
+	if len(consulta) == 0 {
+		s.ID = primitive.NewObjectID()
+		s.Archivo = "sicp.pdf"
+		s.Imagen = "Plus_symbol.png"
+		consulta = append(consulta, &s)
+	}
+	c.JSON(http.StatusOK, gin.H{"libros": consulta})
 
 }
 
@@ -426,8 +488,8 @@ func upload(c *gin.Context) {
 			log.Fatal(err)
 		}
 		filepath := "http://localhost:8080/public/" + filename
-		creartumb("./public/"+filename, filename)
-		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png")
+		desu := stringtoMarc(creartumb("./public/"+filename, filename))
+		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png", desu)
 		//pendiente agregar variable o variable de entorno para las rutas de archivos locales
 		subiraBucket("general-developing-brutality", "./public/"+filename)
 		subiraBucket("general-developing-brutality", "./public/"+filename+".png")
@@ -580,7 +642,7 @@ func verificarjwt(jjwt string, clai *Claims) int {
 }
 
 //agrega un libro con el usuario y la ruta dadas
-func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, primitive.ObjectID) {
+func agregarlibro(rutaArchivo string, usuarioo string, imagenn string, marcadores []*Marcador) (bool, primitive.ObjectID) {
 	var oid primitive.ObjectID
 	client, ctx, cancel := mongoConnection()
 	var testt Libro
@@ -589,6 +651,7 @@ func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, pr
 	testt.Archivo = rutaArchivo
 	testt.Usuario = usuarioo
 	testt.Imagen = imagenn
+	testt.Marcadores = marcadores
 	testt.ID = primitive.NewObjectID()
 	defer cancel()
 	defer client.Disconnect(ctx)
@@ -602,7 +665,7 @@ func agregarlibro(rutaArchivo string, usuarioo string, imagenn string) (bool, pr
 }
 
 //crea la miniatura del libro a partir de la primera pagina
-func creartumb(ruta_pdf string, nombre_pdf string) {
+func creartumb(ruta_pdf string, nombre_pdf string) string {
 	cmd := exec.Command("python", "tumb.py", ruta_pdf, "./public/", nombre_pdf)
 	var out bytes.Buffer
 	fmt.Println("intento crear la miniatura")
@@ -611,8 +674,65 @@ func creartumb(ruta_pdf string, nombre_pdf string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Printf("in all caps: %q\n", out.String())
+	return out.String()
 
+}
+
+//toma el string y lo convierte en un arreglo de marcadores
+func stringtoMarc(strrg string) []*Marcador {
+	var retorno []*Marcador
+	pros := strings.Split(strrg, "\n")
+	profund := 0
+	marc(pros, 0, &retorno, profund)
+	return retorno
+}
+
+//agrega los marcadores de misma profundidad
+func marc(arrey []string, indice int, marcad *[]*Marcador, nivel int) (int, int) {
+	i := indice
+	nnds := nivel
+	for i < len(arrey) {
+		if len(arrey) == 0 {
+			break
+		} else if (len(arrey[i]) == 0 || arrey[i] == "\n") && i == 0 {
+			i++
+		} else if (arrey[i] == "" || arrey[i] == "\n") && i == len(arrey)-1 {
+			break
+		}
+		var arrmarc []*Marcador
+		marcsa := strMarc(arrey[i], arrmarc)
+		fmt.Println(arrey[i])
+		if strings.Count(arrey[i], "\t") == nivel {
+			*marcad = append(*marcad, &marcsa)
+			i++
+		} else if strings.Count(arrey[i], "\t") < nivel {
+			//posible optimizacion asignando directamente el nuevo nivel
+			nnds--
+			break
+		} else if strings.Count(arrey[i], "\t") > nivel {
+			i, nnds = marc(arrey, i, &(*marcad)[len(*marcad)-1].Hijos, nivel+1)
+		}
+
+	}
+	return i, nnds
+}
+
+//construye un marcador a partir de una string
+func strMarc(strss string, hijos []*Marcador) Marcador {
+	separador := strings.LastIndex(strss, ",")
+	tem := strings.LastIndex(strss, "\t") + 1
+	temps := []rune(strss)
+	i, errur := strconv.Atoi(string(temps[separador+1 : len(strss)-1]))
+	var mar Marcador
+	if errur != nil {
+		fmt.Println(errur.Error())
+		return mar
+	}
+	//Quitar la coma final del titulo para que se guarde completo siempre,(alternativa separador-1) o no
+	mar.Titulo = string(temps[tem:separador])
+	mar.Pagina = i
+	mar.Hijos = hijos
+	return mar
 }
 
 //muestra los errores del sdk de aws
