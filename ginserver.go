@@ -124,7 +124,7 @@ func main() {
 	router.StaticFS("/file", http.Dir("public"))
 	router.OPTIONS("/file", opciones)
 	//router.Use(cors.Default())
-	router.Run(":8080")
+	router.Run(os.Getenv("PUERTO"))
 }
 func auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
