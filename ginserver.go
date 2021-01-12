@@ -114,8 +114,12 @@ func main() {
 	router.OPTIONS("/cheatsheets", opciones)
 	router.OPTIONS("/inicio", opciones)
 	router.OPTIONS("/upload", opciones)
+	router.OPTIONS("/borrarcheatsheet/", opciones)
+	router.OPTIONS("/borrarcheat/", opciones)
 	router.Use(auth())
 	router.GET("/inicio", paginicio)
+	router.DELETE("/borrarcheat/", borrarCheat)
+	router.DELETE("/borrarcheatsheet/", borrarCheatSheet)
 	router.Static("/images", "./public/")
 	router.StaticFS("/file", http.Dir("public"))
 	router.OPTIONS("/file", opciones)
@@ -158,6 +162,51 @@ func CORSMiddleware() gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+func borrarCheatSheet(c *gin.Context) {
+	//falta ver que la hoja pertenesca al usuario
+	var chsh CheatSheet
+	filtro := bson.M{"id": chsh.ID}
+	erorr := c.ShouldBindJSON(&chsh)
+	findOps := options.Delete()
+	if erorr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+		return
+	} else {
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		con, err := client.Database("slice-pdf").Collection("cheatsheets").DeleteOne(context.TODO(), filtro, findOps)
+		if err != nil {
+			log.Fatal(err)
+		}
+		filtro = bson.M{"cheatsheet": chsh.ID}
+		con, err = client.Database("slice-pdf").Collection("cheats").DeleteMany(context.TODO(), filtro, findOps)
+		fmt.Println(con)
+		c.JSON(http.StatusOK, gin.H{"Se Borró": chsh})
+
+	}
+}
+func borrarCheat(c *gin.Context) {
+	var chsh Cheat
+	filtro := bson.M{"id": chsh.ID}
+	erorr := c.ShouldBindJSON(&chsh)
+	findOps := options.Delete()
+	if erorr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"msg": erorr})
+		return
+	} else {
+		client, ctx, cancel := mongoConnection()
+		defer cancel()
+		defer client.Disconnect(ctx)
+		con, err := client.Database("slice-pdf").Collection("cheats").DeleteOne(context.TODO(), filtro, findOps)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(con)
+		c.JSON(http.StatusOK, gin.H{"Se Borró": chsh})
+
 	}
 }
 
