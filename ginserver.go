@@ -493,8 +493,8 @@ func upload(c *gin.Context) {
 		desu := stringtoMarc(creartumb("./public/"+filename, filename))
 		agregarlibro(filename, claim.Correo, "http://localhost:8080/images/"+filename+".png", desu)
 		//pendiente agregar variable o variable de entorno para las rutas de archivos locales
-		subiraBucket("general-developing-brutality", "./public/"+filename)
-		subiraBucket("general-developing-brutality", "./public/"+filename+".png")
+		// subiraBucket("general-developing-brutality", "./public/"+filename)
+		// subiraBucket("general-developing-brutality", "./public/"+filename+".png")
 		c.JSON(http.StatusOK, gin.H{"Libro": filename, "ruta": filepath})
 	} else if statuss == 1 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado para subir archivos"})
