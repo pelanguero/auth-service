@@ -126,6 +126,8 @@ func main() {
 	//router.Use(cors.Default())
 	router.Run(os.Getenv("PUERTO"))
 }
+
+//autenticacion middleware probablemente requiera mejoras
 func auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claim := &Claims{}
