@@ -441,7 +441,7 @@ func iniciosesion(c *gin.Context) {
 	defer cancel()
 	defer client.Disconnect(ctx)
 
-	errorr := client.Database("slice-pdf").Collection("usuarios").FindOne(context.TODO(), filtro).Decode(&testt)
+	errorr := client.Database("auth-service").Collection("usuarioos").FindOne(context.TODO(), filtro).Decode(&testt)
 	if errorr != nil {
 		log.Println(errorr)
 	}
@@ -547,12 +547,12 @@ func Create(user *Usuario) (primitive.ObjectID, bool, error) {
 	defer cancel()
 	defer client.Disconnect(ctx)
 	user.ID = primitive.NewObjectID()
-	errorr := client.Database("slice-pdf").Collection("usuarios").FindOne(context.TODO(), filtro).Decode(&testt)
+	errorr := client.Database("auth-service").Collection("usuarioos").FindOne(context.TODO(), filtro).Decode(&testt)
 	if errorr != nil {
 		log.Println(errorr)
 	}
 	if testt.Correo != user.Correo {
-		result, err := client.Database("slice-pdf").Collection("usuarios").InsertOne(ctx, user)
+		result, err := client.Database("auth-service").Collection("usuarioos").InsertOne(ctx, user)
 		if err != nil {
 			log.Printf("No se pudo agregar el usuario: %v", err)
 			return primitive.NilObjectID, false, err
