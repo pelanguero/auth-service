@@ -102,6 +102,7 @@ func main() {
 	router.POST("/upload", upload)
 	router.POST("/addCheatSheet", crearCheatSheet)
 	router.POST("/addCheat", crearCheat)
+	router.POST("/verificarToken", verificartoken)
 
 	router.GET("/usuarios/", handleGetUsers)
 	router.GET("/cheatsheets", consultaCheatSheets)
@@ -143,6 +144,23 @@ func auth() gin.HandlerFunc {
 			c.AbortWithStatus(400)
 		}
 		c.Next()
+	}
+}
+func verificartoken(c *gin.Context) {
+	claim := &Claims{}
+	statuss := verificarjwt(c.Request.Header.Get("token"), claim)
+	if 0 == statuss {
+		c.JSON(http.StatusOK, gin.H{"ok": "Puede continuar con la operacion"})
+
+	} else if statuss == 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado"})
+		return
+	} else if statuss == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peticion invalida"})
+		return
+	} else if statuss == 2 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No estas Autorizado, token no valido"})
+		return
 	}
 }
 func opciones(c *gin.Context) {
