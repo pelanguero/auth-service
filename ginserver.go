@@ -87,7 +87,7 @@ type Cheat struct {
 var jwtkey = []byte("clave secreta xd")
 
 func main() {
-	err := godotenv.Load()
+	err := godotenv.Load("/var/goproject/auth-service/")
 	if err != nil {
 		fmt.Println("Error al cargar .env")
 	}
